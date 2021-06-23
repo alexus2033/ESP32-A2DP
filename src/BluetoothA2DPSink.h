@@ -113,9 +113,6 @@ extern "C" {
         /// Returns true if the state is connected
         virtual bool isConnected();
 
-        /// Returns connected Device ID
-        virtual uint8_t* remoteAddress();
-
         /// Determine the actuall audio type
         virtual esp_a2d_mct_t get_audio_type();
 
@@ -127,6 +124,11 @@ extern "C" {
         // Define a callback method wihich provides media state changes (play/stop)
         virtual void set_mediastate_callback(void (*callback)(esp_a2d_audio_state_t)) {
             this->a2d_mediastate_callback = callback;
+        }
+
+        // Define a callback method wihich provides connection state change (disconnected/connecting/connected)
+        virtual void set_connectstate_callback(void (*callback)(esp_a2d_connection_state_t, const uint8_t*)){
+            this->a2d_connectionstate_callback = callback;
         }
 
         /// Define callback which is called when we receive data: This callback provides access to the data
@@ -181,6 +183,7 @@ extern "C" {
         void (*stream_reader)(const uint8_t*, uint32_t) = nullptr;
         void (*avrc_metadata_callback)(uint8_t, const uint8_t*) = nullptr;
         void (*a2d_mediastate_callback)(esp_a2d_audio_state_t) = nullptr;
+        void (*a2d_connectionstate_callback)(esp_a2d_connection_state_t, const uint8_t*) = nullptr;
         bool is_auto_reconnect;
         esp_bd_addr_t last_connection = { 0,0,0,0,0,0 };
         esp_bd_addr_t peer_addr = { 0,0,0,0,0,0 };

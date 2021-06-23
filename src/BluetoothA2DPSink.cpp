@@ -213,10 +213,6 @@ bool BluetoothA2DPSink::isConnected() {
     return connection_state == ESP_A2D_CONNECTION_STATE_CONNECTED;
 }
 
-uint8_t* BluetoothA2DPSink::remoteAddress() {
-    return peer_addr;
-}
-
 esp_a2d_mct_t BluetoothA2DPSink::get_audio_type() {
     return audio_type;
 }
@@ -412,7 +408,12 @@ void  BluetoothA2DPSink::av_hdl_a2d_evt(uint16_t event, void *p_param)
         uint8_t *bda = a2d->conn_stat.remote_bda;
         connection_state = a2d->conn_stat.state;
         ESP_LOGI(BT_AV_TAG, "A2DP connection state: %s, [%02x:%02x:%02x:%02x:%02x:%02x]",
-            m_a2d_conn_state_str[a2d->conn_stat.state], bda[0], bda[1], bda[2], bda[3], bda[4], bda[5]);
+        m_a2d_conn_state_str[a2d->conn_stat.state], bda[0], bda[1], bda[2], bda[3], bda[4], bda[5]);
+
+        // call connectionstate callback if available
+        if (a2d_connectionstate_callback != nullptr){
+            a2d_connectionstate_callback(a2d->conn_stat.state, a2d->conn_stat.remote_bda);
+        }
 
         if (a2d->conn_stat.state == ESP_A2D_CONNECTION_STATE_DISCONNECTED) {
             ESP_LOGI(BT_AV_TAG, "ESP_A2D_CONNECTION_STATE_DISCONNECTED");
@@ -439,7 +440,6 @@ void  BluetoothA2DPSink::av_hdl_a2d_evt(uint16_t event, void *p_param)
             connection_rety_count = 0;
             if (is_i2s_output) i2s_start(i2s_port);
             // record current connection
-            memcpy(peer_addr, a2d->conn_stat.remote_bda, sizeof(a2d->conn_stat.remote_bda));
             if (is_auto_reconnect) {
                 set_last_connection(a2d->conn_stat.remote_bda, sizeof(a2d->conn_stat.remote_bda));
             }
@@ -518,6 +518,7 @@ void BluetoothA2DPSink::av_new_track()
     //Register notifications and request metadata
     esp_avrc_ct_send_metadata_cmd(0, ESP_AVRC_MD_ATTR_TITLE | ESP_AVRC_MD_ATTR_ARTIST | ESP_AVRC_MD_ATTR_ALBUM | ESP_AVRC_MD_ATTR_TRACK_NUM | ESP_AVRC_MD_ATTR_NUM_TRACKS | ESP_AVRC_MD_ATTR_GENRE);
     esp_avrc_ct_send_register_notification_cmd(1, ESP_AVRC_RN_TRACK_CHANGE, 0);
+    esp_avrc_ct_send_register_notification_cmd(2, ESP_AVRC_RN_BATTERY_STATUS_CHANGE, 0);
 }
 
 #ifdef CURRENT_ESP_IDF
@@ -531,6 +532,9 @@ void BluetoothA2DPSink::av_notify_evt_handler(uint8_t event_id, uint32_t event_p
     case ESP_AVRC_RN_TRACK_CHANGE:
         ESP_LOGD(BT_AV_TAG, "%s ESP_AVRC_RN_TRACK_CHANGE %d", __func__, event_id);
         av_new_track();
+        break;
+    case ESP_AVRC_RN_BATTERY_STATUS_CHANGE:
+        ESP_LOGD(BT_AV_TAG, "%s ESP_AVRC_RN_BATTERY_STATUS_CHANGE %d", __func__, event_id);
         break;
     default:
         ESP_LOGE(BT_AV_TAG, "%s unhandled evt %d", __func__, event_id);
