@@ -121,14 +121,19 @@ extern "C" {
             this->avrc_metadata_callback = callback;
         }
 
-        // Define a callback method wihich provides media state changes (play/stop)
+        // Define a callback method which provides media state changes (play/stop)
         virtual void set_mediastate_callback(void (*callback)(esp_a2d_audio_state_t)) {
             this->a2d_mediastate_callback = callback;
         }
 
-        // Define a callback method wihich provides connection state change (disconnected/connecting/connected)
+        // Define a callback method which provides connection state change (disconnected/connecting/connected)
         virtual void set_connectstate_callback(void (*callback)(esp_a2d_connection_state_t, const uint8_t*)){
             this->a2d_connectionstate_callback = callback;
+        }
+
+         // Define a callback method which provides connection request with auto-generated PIN
+        virtual void set_connectrequest_callback(void (*callback)(uint8_t, const uint8_t*)){
+            this->a2d_connectrequest_callback = callback;
         }
 
         /// Define callback which is called when we receive data: This callback provides access to the data
@@ -184,12 +189,14 @@ extern "C" {
         void (*avrc_metadata_callback)(uint8_t, const uint8_t*) = nullptr;
         void (*a2d_mediastate_callback)(esp_a2d_audio_state_t) = nullptr;
         void (*a2d_connectionstate_callback)(esp_a2d_connection_state_t, const uint8_t*) = nullptr;
+        void (*a2d_connectrequest_callback)(uint8_t, const uint8_t*) = nullptr;
         bool is_auto_reconnect;
         esp_bd_addr_t last_connection = { 0,0,0,0,0,0 };
         esp_bd_addr_t peer_addr = { 0,0,0,0,0,0 };
         bool is_i2s_output = true;
         bool player_init = false;
         bool mono_downmix = false;
+        bool pin_confirmation = false;
 #ifdef CURRENT_ESP_IDF
         esp_bt_discovery_mode_t discoverability = ESP_BT_GENERAL_DISCOVERABLE;
 #endif
