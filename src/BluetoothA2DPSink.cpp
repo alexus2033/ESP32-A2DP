@@ -14,6 +14,8 @@
 // Copyright 2015-2016 Espressif Systems (Shanghai) PTE LTD
 
 #include "BluetoothA2DPSink.h"
+//#define CONFIG_CLASSIC_BT_ENABLED 1
+//#define CONFIG_BT_SPP_ENABLED 1
 
 /**
  * Some data that must be avaliable for C calls
@@ -48,7 +50,8 @@ BluetoothA2DPSink::BluetoothA2DPSink() {
             .intr_alloc_flags = 0, // default interrupt priority
             .dma_buf_count = 8,
             .dma_buf_len = 64,
-            .use_apll = false
+            .use_apll = false,
+            .tx_desc_auto_clear = true // helps avoiding noise in case of data unavailability
         };
 
         // setup default pins
@@ -597,6 +600,24 @@ void BluetoothA2DPSink::av_hdl_stack_evt(uint16_t event, void *p_param)
     switch (event) {
         case BT_APP_EVT_STACK_UP: {
             ESP_LOGD(BT_AV_TAG, "%s av_hdl_stack_evt %s", __func__, "BT_APP_EVT_STACK_UP");
+
+            if(pin_confirmation){
+                // Set default parameters for Legacy Pairing
+                esp_bt_pin_type_t pin_type = ESP_BT_PIN_TYPE_FIXED;
+                esp_bt_pin_code_t pin_code;     // Use fixed pin code
+                pin_code[0] = '4';
+                pin_code[1] = '3';
+                pin_code[2] = '2';
+                pin_code[3] = '1';
+                if (esp_bt_gap_set_pin(pin_type, 4, pin_code) != ESP_OK){
+                       ESP_LOGE(BT_AV_TAG,"set pin failed");
+                }
+
+                esp_bt_sp_param_t param_type = ESP_BT_SP_IOCAP_MODE;
+                esp_bt_io_cap_t iocap = ESP_BT_IO_CAP_IO;
+                esp_bt_gap_set_security_param(param_type, &iocap, sizeof(uint8_t));
+            }
+
             /* set up device name */
             esp_bt_dev_set_device_name(bt_name);
 
