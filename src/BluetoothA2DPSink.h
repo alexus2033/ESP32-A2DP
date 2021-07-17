@@ -65,6 +65,8 @@ extern "C" {
         static void app_a2d_callback(esp_a2d_cb_event_t event, esp_a2d_cb_param_t *param);
         /// handle esp_avrc_ct_cb_event_t
         static void app_rc_ct_callback(esp_avrc_ct_cb_event_t event, esp_avrc_ct_cb_param_t *param);
+        //handle generic-access-profile Events
+        static void gap_callback(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param_t *param);
         /// task handler
         static void app_task_handler(void *arg);
         /// Callback for music stream 
@@ -101,7 +103,7 @@ extern "C" {
         /// starts the I2S bluetooth sink with the inidicated name
         virtual void start(const char* name, bool auto_reconect=true);
 
-        /// starts the I2S bluetooth sink with the inidicated name - if you release the memory a future start is not possible
+        /// ends the I2S bluetooth sink with the inidicated name - if you release the memory a future start is not possible
         virtual void end(bool release_memory=false);
 
         /// Determine the actual audio state
@@ -132,7 +134,8 @@ extern "C" {
         }
 
          // Define a callback method which provides connection request with auto-generated PIN
-        virtual void set_connectrequest_callback(void (*callback)(uint8_t, const uint8_t*)){
+        virtual void set_connectrequest_callback(void (*callback)(esp_bt_gap_cb_event_t)){
+            ESP_LOGD(BT_AV_TAG, "set_connectrequest_callback");
             this->a2d_connectrequest_callback = callback;
         }
 
@@ -189,7 +192,7 @@ extern "C" {
         void (*avrc_metadata_callback)(uint8_t, const uint8_t*) = nullptr;
         void (*a2d_mediastate_callback)(esp_a2d_audio_state_t) = nullptr;
         void (*a2d_connectionstate_callback)(esp_a2d_connection_state_t, const uint8_t*) = nullptr;
-        void (*a2d_connectrequest_callback)(uint8_t, const uint8_t*) = nullptr;
+        void (*a2d_connectrequest_callback)(esp_bt_gap_cb_event_t) = nullptr;
         bool is_auto_reconnect;
         esp_bd_addr_t last_connection = { 0,0,0,0,0,0 };
         esp_bd_addr_t peer_addr = { 0,0,0,0,0,0 };
@@ -238,7 +241,9 @@ extern "C" {
         virtual void av_hdl_a2d_evt(uint16_t event, void *p_param);
         // avrc event handler 
         virtual void av_hdl_avrc_evt(uint16_t event, void *p_param);
-
+        // generic-access-profile event handler
+        virtual void gap_callback(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param_t *param);
+        
         void connect_to_last_device();
         // change the scan mode
         void set_scan_mode_connectable(bool connectable);
