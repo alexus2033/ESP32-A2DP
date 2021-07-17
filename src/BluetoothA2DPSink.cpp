@@ -30,6 +30,7 @@ extern "C" void app_task_handler_2(void *arg);
 extern "C" void audio_data_callback_2(const uint8_t *data, uint32_t len);
 extern "C" void app_a2d_callback_2(esp_a2d_cb_event_t event, esp_a2d_cb_param_t *param);
 extern "C" void app_rc_ct_callback_2(esp_avrc_ct_cb_event_t event, esp_avrc_ct_cb_param_t *param);
+extern "C" void gap_callback_2(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param_t *param);
 
 /**
  * Constructor
@@ -602,17 +603,6 @@ void BluetoothA2DPSink::av_hdl_stack_evt(uint16_t event, void *p_param)
             ESP_LOGD(BT_AV_TAG, "%s av_hdl_stack_evt %s", __func__, "BT_APP_EVT_STACK_UP");
 
             if(pin_confirmation){
-                // Set default parameters for Legacy Pairing
-                esp_bt_pin_type_t pin_type = ESP_BT_PIN_TYPE_FIXED;
-                esp_bt_pin_code_t pin_code;     // Use fixed pin code
-                pin_code[0] = '4';
-                pin_code[1] = '3';
-                pin_code[2] = '2';
-                pin_code[3] = '1';
-                if (esp_bt_gap_set_pin(pin_type, 4, pin_code) != ESP_OK){
-                       ESP_LOGE(BT_AV_TAG,"set pin failed");
-                }
-
                 esp_bt_sp_param_t param_type = ESP_BT_SP_IOCAP_MODE;
                 esp_bt_io_cap_t iocap = ESP_BT_IO_CAP_IO;
                 esp_bt_gap_set_security_param(param_type, &iocap, sizeof(uint8_t));
@@ -634,6 +624,9 @@ void BluetoothA2DPSink::av_hdl_stack_evt(uint16_t event, void *p_param)
                 ESP_LOGE(BT_AV_TAG,"esp_avrc_ct_init: %d",result);
             }
 
+            if (esp_bt_gap_register_callback(gap_callback_2) != ESP_OK) {
+                ESP_LOGE(BT_AV_TAG, "gap register failed");
+            }
             /* initialize A2DP sink */
             if (esp_a2d_register_callback(app_a2d_callback_2)!=ESP_OK){
                 ESP_LOGE(BT_AV_TAG,"esp_a2d_register_callback");
@@ -648,7 +641,7 @@ void BluetoothA2DPSink::av_hdl_stack_evt(uint16_t event, void *p_param)
                 ESP_LOGD(BT_AV_TAG, "connect_to_last_device");
                 connect_to_last_device();
             }
-
+            
             /* set discoverable and connectable mode, wait to be connected */
             ESP_LOGD(BT_AV_TAG, "esp_bt_gap_set_scan_mode(ESP_BT_SCAN_MODE_CONNECTABLE_DISCOVERABLE)");
             set_scan_mode_connectable(true);
@@ -697,6 +690,43 @@ void BluetoothA2DPSink::app_a2d_callback(esp_a2d_cb_event_t event, esp_a2d_cb_pa
     }
     default:
         ESP_LOGE(BT_AV_TAG, "Invalid A2DP event: %d", event);
+        break;
+    }
+}
+
+//handle generic-access-profile Events
+void BluetoothA2DPSink::gap_callback(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param_t *param)
+{
+  ESP_LOGI(BT_AV_TAG, "gap event: %d", event);
+  //someone listening?
+  
+  if (a2d_connectrequest_callback == nullptr) return;
+  switch (event) {
+    case ESP_BT_GAP_AUTH_CMPL_EVT: {
+        if (param->auth_cmpl.stat == ESP_BT_STATUS_SUCCESS) {
+            ESP_LOGI(BT_AV_TAG, "authentication success: %s", param->auth_cmpl.device_name);
+        } else {
+            ESP_LOGE(BT_AV_TAG, "authentication failed, status:%d", param->auth_cmpl.stat);
+        }
+        a2d_connectrequest_callback(event);
+        break;
+    }
+    case ESP_BT_GAP_CFM_REQ_EVT: {
+        ESP_LOGI(BT_AV_TAG, "ESP_BT_GAP_CFM_REQ_EVT Please compare the numeric value: %d", param->cfm_req.num_val);
+        a2d_connectrequest_callback(event);
+        if (a2d_connectionstate_callback != nullptr){
+            ESP_LOGI(BT_AV_TAG, "raise event: a2d_connectionstate_callback");
+            a2d_connectionstate_callback(ESP_A2D_CONNECTION_STATE_CONNECTED, nullptr);
+        }
+        ESP_LOGI(BT_AV_TAG, "gap event: %d after callback", event);
+        break;
+    }
+    case ESP_BT_GAP_KEY_NOTIF_EVT: {
+        ESP_LOGI(TAG, "ESP_BT_GAP_KEY_NOTIF_EVT passkey:%d", param->key_notif.passkey);
+        a2d_connectrequest_callback(event);
+        break;
+    }
+    default:
         break;
     }
 }
@@ -907,6 +937,12 @@ void BluetoothA2DPSinkCallbacks::app_rc_ct_callback(esp_avrc_ct_cb_event_t event
     actual_bluetooth_a2dp_sink->app_rc_ct_callback(event, param);
 }
 
+void BluetoothA2DPSinkCallbacks::gap_callback(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param_t *param){
+  ESP_LOGD(BT_AV_TAG, "%s", __func__);
+  if (actual_bluetooth_a2dp_sink)
+    actual_bluetooth_a2dp_sink->gap_callback(event, param);
+}
+
 /**
  * C Callback Functions needed for the ESP32 API
  */
@@ -930,6 +966,10 @@ extern "C" void app_rc_ct_callback_2(esp_avrc_ct_cb_event_t event, esp_avrc_ct_c
     BluetoothA2DPSinkCallbacks::app_rc_ct_callback(event, param);
 }
 
+extern "C" void gap_callback_2(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param_t *param){
+    ESP_LOGD(BT_AV_TAG, "%s", __func__);
+    BluetoothA2DPSinkCallbacks::gap_callback(event, param);
+}
 
 #ifdef CURRENT_ESP_IDF
 void BluetoothA2DPSink::set_scan_mode_connectable(bool connectable) {
