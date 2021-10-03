@@ -40,7 +40,6 @@ extern "C" void app_rc_ct_callback_2(esp_avrc_ct_cb_event_t event, esp_avrc_ct_c
 extern "C" void app_gap_callback_2(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param_t *param);
 
 #ifdef CURRENT_ESP_IDF
-static esp_avrc_rn_evt_cap_mask_t s_avrc_peer_rn_cap;
 extern "C" void app_rc_tg_callback_2(esp_avrc_tg_cb_event_t  event, esp_avrc_tg_cb_param_t *param);
 #endif
 
@@ -657,16 +656,19 @@ void  BluetoothA2DPSink::av_hdl_a2d_evt(uint16_t event, void *p_param)
 
             // for now only SBC stream is supported
             if (player_init == false && is_i2s_output && a2d->audio_cfg.mcc.type == ESP_A2D_MCT_SBC) {
-                
-                i2s_set_clk(i2s_port, i2s_config.sample_rate, i2s_config.bits_per_sample, i2s_channels);
-
                 ESP_LOGI(BT_AV_TAG, "configure audio player %x-%x-%x-%x\n",
                         a2d->audio_cfg.mcc.cie.sbc[0],
                         a2d->audio_cfg.mcc.cie.sbc[1],
                         a2d->audio_cfg.mcc.cie.sbc[2],
                         a2d->audio_cfg.mcc.cie.sbc[3]);
-                ESP_LOGI(BT_AV_TAG, "audio player configured, samplerate=%d", i2s_config.sample_rate);
-		        player_init = true; //init finished
+                
+                // setup sample rate and channels
+                if (i2s_set_clk(i2s_port, i2s_config.sample_rate, i2s_config.bits_per_sample, i2s_channels)!=ESP_OK){
+                    ESP_LOGE(BT_AV_TAG, "i2s_set_clk failed with samplerate=%d", i2s_config.sample_rate);
+                } else {
+                    ESP_LOGI(BT_AV_TAG, "audio player configured, samplerate=%d", i2s_config.sample_rate);
+    		        player_init = true; //init finished
+                }
             }
             break;
         }
@@ -733,7 +735,6 @@ void BluetoothA2DPSink::av_hdl_avrc_evt(uint16_t event, void *p_param)
                  rc->conn_stat.connected, bda[0], bda[1], bda[2], bda[3], bda[4], bda[5]);
 
 #ifdef CURRENT_ESP_IDF
-
         if (rc->conn_stat.connected) {
             av_new_track();
 			 // get remote supported event_ids of peer AVRCP Target
@@ -742,8 +743,12 @@ void BluetoothA2DPSink::av_hdl_avrc_evt(uint16_t event, void *p_param)
 			// clear peer notification capability record
             s_avrc_peer_rn_cap.bits = 0;
 		}		
-        break;
+#else
+        if (rc->conn_stat.connected) {
+            av_new_track();
+        }
 #endif
+        break;
 
     }
     case ESP_AVRC_CT_PASSTHROUGH_RSP_EVT: {
@@ -909,16 +914,29 @@ void BluetoothA2DPSink::app_a2d_callback(esp_a2d_cb_event_t event, esp_a2d_cb_pa
 void BluetoothA2DPSink::audio_data_callback(const uint8_t *data, uint32_t len) {
     ESP_LOGD(BT_AV_TAG, "%s", __func__);
 
-    if (mono_downmix) {
+    if (mono_downmix || is_volume_used) {
+        double volumeFactorFloat = s_volume;
+        volumeFactorFloat = pow(2.0, volumeFactorFloat * 12.0 / 127.0);
+        int32_t volumeFactor = volumeFactorFloat - 1.0;
+        if (volumeFactor > 0xfff) {
+            volumeFactor = 0xfff;
+        }
         uint8_t* corr_data = (uint8_t*) data;
         for (int i=0; i<len/4; i++) {
             int16_t pcmLeft = ((uint16_t)data[i*4 + 1] << 8) | data[i*4];
             int16_t pcmRight = ((uint16_t)data[i*4 + 3] << 8) | data[i*4 + 2];
-            int16_t mono = ((int32_t)pcmLeft + pcmRight) >> 1;
-            corr_data[i*4+1] = mono >> 8;
-            corr_data[i*4] = mono;
-            corr_data[i*4+3] = mono >> 8;
-            corr_data[i*4+2] = mono;
+            if (mono_downmix) {
+                pcmRight = pcmLeft = ((int32_t)pcmLeft + pcmRight) >> 1;
+            }
+
+            if (is_volume_used) {
+                pcmLeft = (int32_t)pcmLeft * volumeFactor / 0xfff; 
+                pcmRight = (int32_t)pcmRight * volumeFactor / 0xfff; 
+            }
+            corr_data[i*4+1] = pcmLeft >> 8;
+            corr_data[i*4] = pcmLeft;
+            corr_data[i*4+3] = pcmRight >> 8;
+            corr_data[i*4+2] = pcmRight;
         }
     }
     
@@ -941,22 +959,7 @@ void BluetoothA2DPSink::audio_data_callback(const uint8_t *data, uint32_t len) {
                 int16_t sample = data[i*2] | data[i*2+1]<<8;
                 corr_data[i]= sample + 0x8000;
             }
-        }
-		
-
-        // adjust volume if necessary
-        if (is_volume_used){
-            int16_t * pcmdata = (int16_t *)data;
-            for (int i=0; i<len/2; i++) {
-                int32_t temp = (int32_t)(*pcmdata);
-                temp = temp * s_volume;
-                temp = temp/512;
-                //*pcmdata = ((*pcmdata)*s_volume)/127;
-                *pcmdata = (int16_t)temp;
-                pcmdata++;
-            }
-        }
-		
+        }		
 
         size_t i2s_bytes_written;
         if (i2s_config.bits_per_sample==I2S_BITS_PER_SAMPLE_16BIT){
@@ -1103,7 +1106,12 @@ void BluetoothA2DPSink::set_volume(uint8_t volume)
 {
   ESP_LOGI(BT_AV_TAG, "set_volume %d", volume);
   is_volume_used = true;
-  s_volume =  (volume) & 0x7f;
+  if (volume > 0x7f) {
+      volume = 0x7f;
+  } else if (volume < 0) {
+      volume = 0;
+  }
+  s_volume = volume & 0x7f;
 
 #ifdef CURRENT_ESP_IDF
   volume_set_by_local_host(s_volume);
@@ -1114,7 +1122,7 @@ void BluetoothA2DPSink::set_volume(uint8_t volume)
 int BluetoothA2DPSink::get_volume()
 {
   // ESP_LOGI(BT_AV_TAG, "get_volume %d", s_volume);
-  return ((s_volume)* 100/ 0x7f);
+  return s_volume;
 }
 
 void BluetoothA2DPSink::activate_pin_code(bool active){
@@ -1231,13 +1239,15 @@ void BluetoothA2DPSink::app_rc_tg_callback(esp_avrc_tg_cb_event_t event, esp_avr
 void BluetoothA2DPSink::volume_set_by_controller(uint8_t volume)
 {
     ESP_LOGI(BT_AV_TAG, "Volume is set by remote controller to %d", (uint32_t)volume * 100 / 0x7f);
+    is_volume_used = true;
+
     _lock_acquire(&s_volume_lock);
     s_volume = volume;
     _lock_release(&s_volume_lock);
-	
+	is_volume_used = true;
 	
 	if (bt_volumechange!=nullptr){
-		(*bt_volumechange)(s_volume * 100/ 0x7f);
+		(*bt_volumechange)(s_volume);
 	}	
 }
 
