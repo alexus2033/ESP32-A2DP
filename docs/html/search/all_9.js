@@ -1,4 +1,5 @@
 var searchData=
 [
-  ['onechannelsounddata_33',['OneChannelSoundData',['../class_one_channel_sound_data.html',1,'OneChannelSoundData'],['../class_one_channel_sound_data.html#a95a08a39b92863edbc6c759e7c98e4ac',1,'OneChannelSoundData::OneChannelSoundData()']]]
+  ['next_0',['next',['../class_bluetooth_a2_d_p_sink.html#a296fb7aaf8d8e78991d9d505353de94f',1,'BluetoothA2DPSink']]],
+  ['novolumecontrol_1',['NoVolumeControl',['../class_no_volume_control.html',1,'']]]
 ];

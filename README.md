@@ -8,7 +8,7 @@ So we can just feed the input from Bluetooth to the I2S output: An example for t
 
 Unfortunately this example did not make me happy so I decided to convert it into a simple __Arduino Library__ that is very easy to use from an Arduino Software IDE.
 
-## A2DP Sink
+## A2DP Sink (Music Receiver)
 
 ### A Simple I2S Example (A2DS Sink) using default Pins
 Here is the simplest example which just uses the proper default settings:
@@ -55,6 +55,37 @@ void loop() {
 }
 ```
 
+### Using your specific i2s_config
+
+In some cases you might want to use your specific i2s_config settings. E.g. to request a different bits_per_sample (e.g. 32) or to use the use_apll or to optimize the dma buffer...
+
+```
+#include "BluetoothA2DPSink.h"
+
+BluetoothA2DPSink a2dp_sink;
+
+void setup() {
+
+    static i2s_config_t i2s_config = {
+      .mode = (i2s_mode_t) (I2S_MODE_MASTER | I2S_MODE_TX),
+      .sample_rate = 44100, // updated automatically by A2DP
+      .bits_per_sample = (i2s_bits_per_sample_t)32,
+      .channel_format = I2S_CHANNEL_FMT_RIGHT_LEFT,
+      .communication_format = (i2s_comm_format_t) (I2S_COMM_FORMAT_STAND_I2S),
+      .intr_alloc_flags = 0, // default interrupt priority
+      .dma_buf_count = 8,
+      .dma_buf_len = 64,
+      .use_apll = true,
+      .tx_desc_auto_clear = true // avoiding noise in case of data unavailability
+  };
+  a2dp_sink.set_i2s_config(i2s_config);
+  a2dp_sink.start("MyMusic");
+}
+
+void loop() {
+}
+
+```
 
 ### Output to the Internal DAC
 You can also send the output directly to the internal DAC of the ESP32 by providing the corresponding i2s_config:
@@ -70,7 +101,7 @@ void setup() {
         .sample_rate = 44100, // corrected by info from bluetooth
         .bits_per_sample = (i2s_bits_per_sample_t) 16, /* the DAC module will only take the 8bits from MSB */
         .channel_format = I2S_CHANNEL_FMT_RIGHT_LEFT,
-        .communication_format = I2S_COMM_FORMAT_I2S_MSB,
+        .communication_format = (i2s_comm_format_t)I2S_COMM_FORMAT_STAND_MSB,
         .intr_alloc_flags = 0, // default interrupt priority
         .dma_buf_count = 8,
         .dma_buf_len = 64,
@@ -127,6 +158,11 @@ void avrc_metadata_callback(uint8_t data1, const uint8_t *data2) {
 a2dp_sink.set_avrc_metadata_callback(avrc_metadata_callback);
 a2dp_sink.start("BT");
 ```
+By default you should get the most important information, however you can adjust this by calling the ```set_avrc_metadata_attribute_mask``` method e.g if you just need the title and playing time you can call:
+```
+set_avrc_metadata_attribute_mask(ESP_AVRC_MD_ATTR_TITLE | ESP_AVRC_MD_ATTR_PLAYING_TIME);
+```
+before you start the A2DP sink.
 
 ### Support for AVRC Commands
 
@@ -139,7 +175,7 @@ I have added the following AVRC commmands, that you can use to 'control' your A2
 - previous();
 
 
-## A2DP Source
+## A2DP Source (Music Sender)
 
 ### Sending Data from a A2DS Data Source with a Callback
 
@@ -199,7 +235,7 @@ SoundData *music = new OneChannelSoundData((int16_t*)StarWars30_raw, StarWars30_
 
 void setup() {
   a2dp_source.start("RadioPlayer");  
-  a2dp_source.writeData(music);
+  a2dp_source.write_data(music);
 }
 
 void loop() {
@@ -233,12 +269,19 @@ OneChannelSoundData(int16_t *data, int32_t len, bool loop=false, ChannelInfo cha
 
 ```
 
-## Architecture / Dependencies  
+## Architecture / Dependencies / Frameworks
 
 The current code is purely dependent on the ESP-IDF (which is also provided by the Arduino ESP32 core). There are no other dependencies and this includes the Arduino API! 
 
-This restriction limits the provided examples. Please have a look at the [audio-tools](https://github.com/pschatzmann/arduino-audio-tools) project: There I demonstrate e.g. how to connect different microphones, use SD cards and different Audio File Formats.
+Therefore we support:
 
+- Arduino
+- [PlatformIO](https://github.com/pschatzmann/ESP32-A2DP/wiki/PlatformIO)
+- [Espressif IDF](https://github.com/pschatzmann/ESP32-A2DP/wiki/Espressif-IDF-as-a-Component)
+
+This restriction limits however the provided examples. Please have a look at the [audio-tools](https://github.com/pschatzmann/arduino-audio-tools) project: There I demonstrate e.g. how to connect different microphones, use SD cards and different Audio File Formats.
+
+Before you clone the project, please read the following information which can be found in the [Wiki](https://github.com/pschatzmann/ESP32-A2DP/wiki/Design-Overview).
 
 ## Documentation
 
@@ -253,8 +296,6 @@ For Arduino you can download the library as zip and call include Library -> zip 
 cd  ~/Documents/Arduino/libraries
 git clone pschatzmann/ESP32-A2DP.git
 ```
-
-If you are using a current version of ESP IDF, you will receive compile errors like `'ESP_BT_SCAN_MODE_CONNECTABLE_DISCOVERABLE' was not declared in this scope`. To use the new API you can uncomment `#define CURRENT_ESP_IDF` in `src/config.h`
 
 For other frameworks [see the Wiki](https://github.com/pschatzmann/ESP32-A2DP/wiki)
 
