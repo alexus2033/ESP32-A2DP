@@ -121,7 +121,7 @@ void BluetoothA2DPCommon::get_last_connection(){
 
     esp_bd_addr_t bda;
     size_t size = sizeof(bda);
-    err = nvs_get_blob(my_handle, "last_bda", bda, &size);
+    err = nvs_get_blob(my_handle, last_bda_nvs_name(), bda, &size);
     if ( err != ESP_OK) { 
         ESP_LOGE(BT_AV_TAG, "ERROR GETTING NVS BLOB");
     }
@@ -153,7 +153,7 @@ void BluetoothA2DPCommon::set_last_connection(esp_bd_addr_t bda){
     if (err != ESP_OK){
          ESP_LOGE(BT_AV_TAG, "NVS OPEN ERROR");
     }
-    err = nvs_set_blob(my_handle, "last_bda", bda, size);
+    err = nvs_set_blob(my_handle, last_bda_nvs_name(), bda, size);
     if (err == ESP_OK) {
         err = nvs_commit(my_handle);
     } else {
@@ -225,7 +225,17 @@ const char* BluetoothA2DPCommon::to_str(esp_bd_addr_t bda){
 
 
 
+
 #ifdef CURRENT_ESP_IDF
+
+/// Defines if the bluetooth is discoverable
+void BluetoothA2DPCommon::set_discoverability(esp_bt_discovery_mode_t d) {
+  discoverability = d;
+  if (get_connection_state() == ESP_A2D_CONNECTION_STATE_DISCONNECTED || d != ESP_BT_NON_DISCOVERABLE) {
+    esp_bt_gap_set_scan_mode(ESP_BT_CONNECTABLE, discoverability);
+  }
+}
+
 void BluetoothA2DPCommon::set_scan_mode_connectable(bool connectable) {
     ESP_LOGI(BT_AV_TAG,"set_scan_mode_connectable %s", connectable ? "true":"false" );            
     if (connectable){

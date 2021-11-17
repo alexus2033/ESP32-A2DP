@@ -143,7 +143,7 @@ class BluetoothA2DPSource : public BluetoothA2DPCommon {
 
     /// Sets the volume (range 0 - 4096)
     virtual void set_volume(uint8_t volume){
-      ESP_LOGI(BT_AV_TAG, "%s set_volume: %d", volume);
+      ESP_LOGI(BT_AV_TAG, "set_volume: %d", volume);
       volume_value = volume;
       is_volume_used = true;
     }
@@ -217,6 +217,10 @@ class BluetoothA2DPSource : public BluetoothA2DPCommon {
 
     virtual bool get_name_from_eir(uint8_t *eir, uint8_t *bdname, uint8_t *bdname_len);
     virtual void filter_inquiry_scan_result(esp_bt_gap_cb_param_t *param);
+
+    virtual const char* last_bda_nvs_name() {
+        return "src_bda";
+    }
 
     /**
      *  The following mthods are called by the framework. They are public so that they can

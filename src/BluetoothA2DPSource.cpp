@@ -81,13 +81,13 @@ extern "C" void ccall_bt_av_hdl_avrc_ct_evt(uint16_t event, void *param) {
 }
 
 extern "C" int32_t ccall_bt_app_a2d_data_cb(uint8_t *data, int32_t len){
-    //ESP_LOGD(BT_APP_TAG, "x%x - len: %d", __func__, len);
-    if (len < 0 || data == NULL || self_BluetoothA2DPSource==NULL || self_BluetoothA2DPSource->data_stream_callback==NULL) {
+    ESP_LOGD(BT_APP_TAG, "x%x - len: %d", __func__, len);
+    if (len <= 0 || data == NULL || self_BluetoothA2DPSource==NULL || self_BluetoothA2DPSource->data_stream_callback==NULL) {
         return 0;
     }
     int32_t result = (*(self_BluetoothA2DPSource->data_stream_callback))(data, len);
     // adapt volume
-    if (self_BluetoothA2DPSource->is_volume_used){
+    if (result > 0 && self_BluetoothA2DPSource->is_volume_used){
         self_BluetoothA2DPSource->volume_control()->update_audio_data((Frame*)data, result/4, self_BluetoothA2DPSource->volume_value, false, true); 
     }
     return result;
@@ -322,7 +322,7 @@ void BluetoothA2DPSource::bt_app_task_handler(void *arg)
 void BluetoothA2DPSource::bt_app_task_start_up(void)
 {
     s_bt_app_task_queue = xQueueCreate(10, sizeof(app_msg_t));
-    xTaskCreate(ccall_bt_app_task_handler, "BtAppT", 2048, NULL, configMAX_PRIORITIES - 3, &s_bt_app_task_handle);
+    xTaskCreate(ccall_bt_app_task_handler, "BtAppT", 2048, NULL, task_priority, &s_bt_app_task_handle);
     return;
 }
 
@@ -513,17 +513,18 @@ void BluetoothA2DPSource::bt_av_hdl_stack_evt(uint16_t event, void *p_param)
     ESP_LOGD(BT_AV_TAG, "bt_av_hdl_stack_evt evt %d",  event);
     switch (event) {
         case BT_APP_EVT_STACK_UP: {
-            /* set up device name */
+            // set up device name 
             esp_bt_dev_set_device_name(dev_name);
 
-            /* register GAP callback function */
+            // register GAP callback function 
             esp_bt_gap_register_callback(ccall_bt_app_gap_callback);
 
-            /* initialize AVRCP controller */
+            // initialize AVRCP controller 
             esp_avrc_ct_init();
             esp_avrc_ct_register_callback(ccall_bt_app_rc_ct_cb);
 
 #ifdef CURRENT_ESP_IDF
+            // activate volume change
             esp_avrc_rn_evt_cap_mask_t evt_set = {0};
             esp_avrc_rn_evt_bit_mask_operation(ESP_AVRC_BIT_MASK_OP_SET, &evt_set, ESP_AVRC_RN_VOLUME_CHANGE);
             assert(esp_avrc_tg_set_rn_evt_cap(&evt_set) == ESP_OK);
@@ -586,9 +587,9 @@ void BluetoothA2DPSource::process_user_state_callbacks(uint16_t event, void *par
             ESP_LOGD(BT_AV_TAG, "%s ESP_A2D_CONNECTION_STATE_EVT: %s", __func__, to_str(a2d->conn_stat.state));
 
             // callback on state change
+            connection_state = a2d->conn_stat.state;
             if (connection_state_callback!=nullptr){
-                connection_state_callback(connection_state, connection_state_obj);
-                connection_state = a2d->conn_stat.state;
+                connection_state_callback(a2d->conn_stat.state, connection_state_obj);
             }
             break;
 
@@ -597,8 +598,8 @@ void BluetoothA2DPSource::process_user_state_callbacks(uint16_t event, void *par
             ESP_LOGD(BT_AV_TAG, "%s ESP_A2D_AUDIO_STATE_EVT: %s", __func__, to_str(a2d->audio_stat.state));
 
             // callback on state change
-            if (audio_state_callback!=nullptr && audio_state != a2d->audio_stat.state){
-                audio_state_callback(audio_state, audio_state_obj);
+            if (audio_state_callback!=nullptr){
+                audio_state_callback(a2d->audio_stat.state, audio_state_obj);
                 audio_state = a2d->audio_stat.state;
             }
             break;
@@ -635,8 +636,13 @@ void BluetoothA2DPSource::bt_app_av_sm_hdlr(uint16_t event, void *param)
 void BluetoothA2DPSource::bt_app_av_state_unconnected(uint16_t event, void *param)
 {
     switch (event) {
-        case ESP_A2D_CONNECTION_STATE_EVT:
-
+        case ESP_A2D_CONNECTION_STATE_EVT: {
+                esp_a2d_cb_param_t *a2d = (esp_a2d_cb_param_t *)(param);
+                if (a2d->conn_stat.state == ESP_A2D_CONNECTION_STATE_CONNECTED) {
+                    ESP_LOGI(BT_AV_TAG, "a2dp connected");
+                    s_a2d_state =  APP_AV_STATE_CONNECTED;
+                }
+            } break;
         case ESP_A2D_AUDIO_STATE_EVT:
         case ESP_A2D_AUDIO_CFG_EVT:
         case ESP_A2D_MEDIA_CTRL_ACK_EVT:

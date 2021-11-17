@@ -131,10 +131,12 @@ class BluetoothA2DPSink : public BluetoothA2DPCommon {
     /// Define callback which is called when we receive data
     virtual void set_on_data_received(void (*callBack)());
     
-    /// Set the callback that is called when the BT device is connected
+    /// Obsolete: please use set_on_connection_state_changed - Set the callback that is called when the BT device is connected
+    DEPRECATED
     virtual void set_on_connected2BT(void (*callBack)());
     
-    /// Set the callback that is called when the BT device is dis_connected
+    /// Obsolete: please use set_on_connection_state_changed - Set the callback that is called when the BT device is dis_connected
+    DEPRECATED
     virtual void set_on_dis_connected2BT(void (*callBack)());
 
     /// Allows you to reject unauthorized addresses
@@ -196,11 +198,10 @@ class BluetoothA2DPSink : public BluetoothA2DPCommon {
         avrc_metadata_flags = flags;
     }
 
-#ifdef CURRENT_ESP_IDF
-    /// Bluetooth discoverability
-    virtual void set_discoverability(esp_bt_discovery_mode_t d);
-#endif        
-
+    /// swaps the left and right channel
+    virtual void set_swap_lr_channels(bool swap){
+        swap_left_right = swap;
+    }
 
   protected:
     // protected data
@@ -238,9 +239,9 @@ class BluetoothA2DPSink : public BluetoothA2DPCommon {
     void (*avrc_metadata_callback)(uint8_t, const uint8_t*) = nullptr;
     bool (*address_validator)(esp_bd_addr_t remote_bda) = nullptr;
     void (*sample_rate_callback)(uint16_t rate)=nullptr;
+    bool swap_left_right = false;
 
 #ifdef CURRENT_ESP_IDF
-    esp_bt_discovery_mode_t discoverability = ESP_BT_GENERAL_DISCOVERABLE;
     esp_avrc_rn_evt_cap_mask_t s_avrc_peer_rn_cap;
 #endif
 
@@ -258,6 +259,9 @@ class BluetoothA2DPSink : public BluetoothA2DPCommon {
     // execute AVRC command
     virtual void execute_avrc_command(int cmd);
 
+    virtual const char* last_bda_nvs_name() {
+        return "last_bda";
+    }
     /**
      * Wrappbed methods called from callbacks
      */

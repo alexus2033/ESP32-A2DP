@@ -107,6 +107,7 @@ class BluetoothA2DPCommon {
         virtual  bool is_connected() = 0;
 
         /// obsolete: please use is_connected
+        DEPRECATED
         virtual bool isConnected(){
             return is_connected();
         }
@@ -149,11 +150,20 @@ class BluetoothA2DPCommon {
         /// converts a esp_bd_addr_t to a string - the string is 18 characters long! 
         const char* to_str(esp_bd_addr_t bda);
 
+        /// defines the task priority (the default value is configMAX_PRIORITIES - 3)
+        void set_task_priority(UBaseType_t priority){
+            task_priority = priority;
+        }
+
+#ifdef CURRENT_ESP_IDF
+    /// Bluetooth discoverability
+    virtual void set_discoverability(esp_bt_discovery_mode_t d);
+#endif        
 
     protected:
         uint32_t debounce_ms = 0;
         DefaultVolumeControl default_volume_control;
-        VolumeControl *volume_control_ptr;
+        VolumeControl *volume_control_ptr = nullptr;
         esp_bd_addr_t last_connection = {0,0,0,0,0,0};
         bool is_start_disabled = false;
         void (*connection_state_callback)(esp_a2d_connection_state_t state, void* obj) = nullptr;
@@ -164,7 +174,12 @@ class BluetoothA2DPCommon {
         const char *m_a2d_audio_state_str[3] = {"Suspended", "Stopped", "Started"};
         esp_a2d_audio_state_t audio_state = ESP_A2D_AUDIO_STATE_STOPPED;
         esp_a2d_connection_state_t connection_state = ESP_A2D_CONNECTION_STATE_DISCONNECTED;
+        UBaseType_t task_priority = configMAX_PRIORITIES - 3;
+#ifdef CURRENT_ESP_IDF
+        esp_bt_discovery_mode_t discoverability = ESP_BT_GENERAL_DISCOVERABLE;
+#endif
 
+        virtual const char* last_bda_nvs_name() = 0;
         virtual void get_last_connection();
         virtual void set_last_connection(esp_bd_addr_t bda);
         virtual void clean_last_connection();
@@ -177,6 +192,7 @@ class BluetoothA2DPCommon {
         virtual VolumeControl* volume_control() {
             return volume_control_ptr !=nullptr ? volume_control_ptr : &default_volume_control;
         }
+
 
 
 };

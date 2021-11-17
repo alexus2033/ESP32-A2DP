@@ -373,7 +373,7 @@ void BluetoothA2DPSink::app_task_start_up(void)
         app_task_queue = xQueueCreate(10, sizeof(app_msg_t));
 
     if (app_task_handle==NULL) {
-        if (xTaskCreate(ccall_app_task_handler, "BtAppT", 2048, NULL, configMAX_PRIORITIES - 3, &app_task_handle) != pdPASS){
+        if (xTaskCreate(ccall_app_task_handler, "BtAppT", 2048, NULL, task_priority, &app_task_handle) != pdPASS){
             ESP_LOGE(BT_APP_TAG, "%s failed", __func__);
         }
     }
@@ -503,9 +503,9 @@ void  BluetoothA2DPSink::av_hdl_a2d_evt(uint16_t event, void *p_param)
         case ESP_A2D_CONNECTION_STATE_EVT: {
             ESP_LOGD(BT_AV_TAG, "%s ESP_A2D_CONNECTION_STATE_EVT", __func__);
             a2d = (esp_a2d_cb_param_t *)(p_param);
-            connection_state = a2d->conn_stat.state;
 
             // callback
+            connection_state = a2d->conn_stat.state;
             if (connection_state_callback!=nullptr){
                 connection_state_callback(connection_state, connection_state_obj);
             }
@@ -583,9 +583,9 @@ void  BluetoothA2DPSink::av_hdl_a2d_evt(uint16_t event, void *p_param)
             ESP_LOGI(BT_AV_TAG, "A2DP audio state: %s", to_str(a2d->audio_stat.state));
             
             // callback on state change
-            if (audio_state_callback!=nullptr && audio_state != a2d->audio_stat.state){
-                audio_state_callback(audio_state, audio_state_obj);
-                audio_state = a2d->audio_stat.state;
+            audio_state = a2d->audio_stat.state;
+            if (audio_state_callback!=nullptr && audio_state){
+                audio_state_callback(a2d->audio_stat.state, audio_state_obj);
             }
 
             if (is_i2s_output){
@@ -881,10 +881,22 @@ void BluetoothA2DPSink::audio_data_callback(const uint8_t *data, uint32_t len) {
         (*stream_reader)(data, len);
     }
 
+    // swap left and right channels
+    if (swap_left_right){
+        Frame *frame = (Frame*)data;
+        for (int i=0; i<len/4; i++) {
+            int16_t temp = frame[i].channel1;
+            frame[i].channel1 = frame[i].channel2;
+            frame[i].channel2 = temp;
+        }
+    }
+
+
     if (is_i2s_output) {
         // special case for internal DAC output, the incomming PCM buffer needs 
         // to be converted from signed 16bit to unsigned
         int16_t* data16 = (int16_t*) data;
+
         if (this->i2s_config.mode & I2S_MODE_DAC_BUILT_IN) {
     
             //HACK: this is here to remove the const restriction to replace the data in place as per
@@ -1151,12 +1163,6 @@ void ccall_av_hdl_avrc_tg_evt(uint16_t event, void *param){
     actual_bluetooth_a2dp_sink->av_hdl_avrc_tg_evt(event, param);
 }
 
-void BluetoothA2DPSink::set_discoverability(esp_bt_discovery_mode_t d) {
-  discoverability = d;
-  if (get_connection_state() == ESP_A2D_CONNECTION_STATE_DISCONNECTED || d != ESP_BT_NON_DISCOVERABLE) {
-    esp_bt_gap_set_scan_mode(ESP_BT_CONNECTABLE, discoverability);
-  }
-}
 
 void BluetoothA2DPSink::av_hdl_avrc_tg_evt(uint16_t event, void *p_param)
 {
